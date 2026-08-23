@@ -40,12 +40,16 @@ def _start_postgres_container() -> PostgresContainer:
         # Prefer a locally available image to avoid slow/blocked pulls in dev environments.
         candidates = ["postgres:16-alpine", "postgres:16", "postgres:15-alpine", "postgres:15"]
         for candidate in candidates:
-            if subprocess.run(
-                ["docker", "image", "inspect", candidate],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-            ).returncode == 0:
+            try:
+                result = subprocess.run(
+                    ["docker", "image", "inspect", candidate],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+            except FileNotFoundError:
+                pytest.skip("Docker binary not available; skipping Postgres-backed tests")
+            if result.returncode == 0:
                 image = candidate
                 break
         if not image:
@@ -75,12 +79,17 @@ def _start_postgres_container() -> PostgresContainer:
             stdout=subprocess.DEVNULL,
             timeout=120,
         )
+        port_out = subprocess.check_output(
+            ["docker", "port", container_name, "5432/tcp"],
+            text=True,
+        ).strip()
     except subprocess.TimeoutExpired:
-        raise pytest.SkipTest("Docker image pull/run timed out (need a local Postgres image or faster network)")
+        pytest.skip("Docker image pull/run timed out (need a local Postgres image or faster network)")
     except subprocess.CalledProcessError as e:
-        raise pytest.SkipTest(f"Docker run failed: {e}")
+        pytest.skip(f"Docker run failed: {e}")
+    except FileNotFoundError:
+        pytest.skip("Docker binary not available; skipping Postgres-backed tests")
 
-    port_out = subprocess.check_output(["docker", "port", container_name, "5432/tcp"], text=True).strip()
     # Example outputs: "0.0.0.0:49153" or ":::49153"
     host_port = port_out.split(":")[-1]
     url = f"postgresql://postgres:{password}@127.0.0.1:{host_port}/{db_name}"
@@ -124,7 +133,7 @@ def pg_url() -> Iterator[str]:
         subprocess.run(["docker", "stop", container.name], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def _apply_migrations(pg_url: str) -> None:
     os.environ["JETLINKS_AI_DB_URL"] = pg_url
 
@@ -135,7 +144,7 @@ def _apply_migrations(pg_url: str) -> None:
     command.upgrade(cfg, "head")
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def _clean_db(pg_url: str) -> None:
     import psycopg
 
@@ -168,7 +177,7 @@ def _clean_db(pg_url: str) -> None:
 
 
 @pytest.fixture
-def app(pg_url: str, tmp_path: Path):
+def app(pg_url: str, _apply_migrations: None, _clean_db: None, tmp_path: Path):
     os.environ["JETLINKS_AI_DB_URL"] = pg_url
     os.environ["JETLINKS_AI_DATA_DIR"] = str(tmp_path / "data")
     os.environ["JETLINKS_AI_OUTPUTS_DIR"] = str(tmp_path / "outputs")
