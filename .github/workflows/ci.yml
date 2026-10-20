@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   backend-checks:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","ARM64","chenhao-140","ubuntu-24.04"]') }}
     defaults:
       run:
         working-directory: backend
@@ -36,7 +36,7 @@ jobs:
         run: uv run pytest -q
 
   frontend-build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","ARM64","chenhao-140","ubuntu-24.04"]') }}
     defaults:
       run:
         working-directory: frontend
@@ -63,7 +63,7 @@ jobs:
         run: pnpm build
 
   root-typecheck:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON((github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && '["ubuntu-latest"]' || '["self-hosted","Linux","ARM64","chenhao-140","ubuntu-24.04"]') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
